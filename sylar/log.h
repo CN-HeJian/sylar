@@ -5,6 +5,9 @@
 #include <sstream>
 #include <memory>
 #include <list>
+#include <fstream>
+#include <vector>
+#include <iostream>
 
 namespace sylar{
 
@@ -15,6 +18,7 @@ class LogAppender;
 //日志级别
 class LogLevel{
 public:
+
   /**
    * @brief 日志级别枚举
    */
@@ -50,8 +54,10 @@ public:
 //日志事件
 class LogEvent{
 public:
+
   //外部调用指针
   typedef std::shared_ptr<LogEvent> ptr;
+  
   /**
    * @ breif 构造函数
    *  @param[in]  logger        日志器
@@ -180,15 +186,89 @@ private:
 };
 
 /**
+ * @brief 日志格式器
+ */
+class LogFormat{
+public:
+  
+  typedef std::shared_ptr<LogFormat> ptr;
+  
+  /**
+   * @brief 构造函数
+   */ 
+  LogFormat(const std::string& pattern);
+
+  /**
+   * @brief 格式化 
+   */ 
+  std::string format(LogEvent::ptr event);
+
+  /**
+   * @brief pattern的解析
+   */ 
+  void init();
+
+private:
+  class FormatItem{
+  public:
+    
+    typedef std::shared_ptr<FormatItem> ptr;
+    
+    /**
+     * @brief 析构函数
+     */ 
+    virtual ~FormatItem() {}
+    
+    /**
+     * @brief 格式化 
+     */ 
+    virtual void format(std::ostream os,LogEvent::ptr event) = 0;
+  };
+private:
+  std::string m_pattern;
+  std::vector<FormatItem::ptr> m_items;
+};
+
+/**
  * @brief 日志输出地
  */
 class LogAppender{
 public:
+  
   typedef std::shared_ptr<LogAppender> ptr;
-  // @brief 析构函数
+  
+  /**
+   *@brief 析构函数
+   */
   virtual ~LogAppender(){}
-  //
-private:
+  
+  /**
+   *@brief 写入日志
+   *@param[in] level 日志级别
+   *@param[in] ptr   日志事件
+   */
+  virtual void log(LogLevel::Level, LogEvent::ptr) = 0;
+  
+  /**
+   *@brief 设置格式
+   *@param[in] val 日志格式
+   */
+  void setFormatter(LogFormat::ptr val){
+    m_formatter = val;
+  }
+
+  /**
+   *@brief 获取格式
+   */
+  LogFormat::ptr getFormatter() const{
+    return m_formatter;
+  }
+
+protected:
+  //日志等级
+  LogLevel::Level m_level;
+  //日志格式
+  LogFormat::ptr m_formatter;
 };
 
 /**
@@ -196,6 +276,7 @@ private:
  */
 class Logger : public std::enable_shared_from_this<Logger>{
 public:
+  
   typedef std::shared_ptr<Logger> ptr;
    
   /**
@@ -290,22 +371,53 @@ private:
  *  @brief 输出到控制台的Appender
  */ 
 class StdoutLogAppender : public LogAppender{
+public:
 
+  typedef std::shared_ptr<StdoutLogAppender> ptr;
+
+  /**
+   * @brief 写入日志
+   * param[in] level 日志等级
+   * param[in] ptr 日志事件
+   */ 
+  void log(LogLevel::Level level, LogEvent::ptr) override;
 };
 
 /**
  *  @brief 输出到文件的Appender
  */
 class FileLogAppender : public LogAppender{
-
-};
-
-//日志输出格式
-class LogFormat{
 public:
 
+  typedef std::shared_ptr<FileLogAppender> ptr;
+  
+  /**
+   * 构造函数
+   */
+  FileLogAppender(const std::string& filename);
+
+  /**
+   * @brief 写入日志
+   * @param[in] level 日志等级
+   * @param[in] ptr   日志事件
+   */
+  void log(LogLevel::Level level, LogEvent::ptr) override;
+
+  /**
+   * @brief 重新打开文件
+   * @return 打开成功就返回true
+   */ 
+  bool reopen();
+
 private:
+  //文件路径
+  std::string m_filename;
+  //文件流
+  std::ofstream m_filestream;
+  //上次打开时间
+  uint64_t m_lastTime = 0;
 };
+
 
 }
 
