@@ -14,6 +14,7 @@ namespace sylar{
 class Logger;
 class LoggerManager;
 class LogAppender;
+class LogFormat;
 
 //日志级别
 class LogLevel{
@@ -48,7 +49,7 @@ public:
    * @para[in] str 日志级别文本
    */ 
   static LogLevel::Level FromString(const std::string& str);
-};
+};:
 
 
 //日志事件
@@ -186,92 +187,6 @@ private:
 };
 
 /**
- * @brief 日志格式器
- */
-class LogFormat{
-public:
-  
-  typedef std::shared_ptr<LogFormat> ptr;
-  
-  /**
-   * @brief 构造函数
-   */ 
-  LogFormat(const std::string& pattern);
-
-  /**
-   * @brief 格式化 
-   */ 
-  std::string format(LogEvent::ptr event);
-
-  /**
-   * @brief pattern的解析
-   */ 
-  void init();
-
-private:
-  class FormatItem{
-  public:
-    
-    typedef std::shared_ptr<FormatItem> ptr;
-    
-    /**
-     * @brief 析构函数
-     */ 
-    virtual ~FormatItem() {}
-    
-    /**
-     * @brief 格式化 
-     */ 
-    virtual void format(std::ostream os,LogEvent::ptr event) = 0;
-  };
-private:
-  std::string m_pattern;
-  std::vector<FormatItem::ptr> m_items;
-};
-
-/**
- * @brief 日志输出地
- */
-class LogAppender{
-public:
-  
-  typedef std::shared_ptr<LogAppender> ptr;
-  
-  /**
-   *@brief 析构函数
-   */
-  virtual ~LogAppender(){}
-  
-  /**
-   *@brief 写入日志
-   *@param[in] level 日志级别
-   *@param[in] ptr   日志事件
-   */
-  virtual void log(LogLevel::Level, LogEvent::ptr) = 0;
-  
-  /**
-   *@brief 设置格式
-   *@param[in] val 日志格式
-   */
-  void setFormatter(LogFormat::ptr val){
-    m_formatter = val;
-  }
-
-  /**
-   *@brief 获取格式
-   */
-  LogFormat::ptr getFormatter() const{
-    return m_formatter;
-  }
-
-protected:
-  //日志等级
-  LogLevel::Level m_level;
-  //日志格式
-  LogFormat::ptr m_formatter;
-};
-
-/**
  * @brief 日志器 
  */
 class Logger : public std::enable_shared_from_this<Logger>{
@@ -325,12 +240,12 @@ public:
   /**
    * @brief 添加日志目标
    */
-  void addAppender(LogAppender::ptr appender);
+  void addAppender(std::shared_ptr<LogAppender> appender);
     
   /**
    * @brief 删除日志目标
    */ 
-  void delAppender(LogAppender::ptr appender);
+  void delAppender(std::shared_ptr<LogAppender> appender);
  
   /**
    * @brief 清空日志目标
@@ -345,7 +260,7 @@ public:
   }
 
   /**
-   * @brief 设置日志级别
+   * @brief 设置日志级别模板
    */
   void setLevel(LogLevel::Level val){
     m_level = val;
@@ -358,13 +273,73 @@ public:
     return m_name;
   }
 
+  /**
+   * @brief 设置日志格式器
+   */ 
+  void setFormatter(std::shared_ptr<LogFormat> val);
+
+  /**
+   * @brief 设置日志格式器模板
+   */ 
+  void setFormatter(const std::string & val);
+
+  /**
+   * @brief 获取日志格式器
+   */
+   std::shared_ptr<LogFormat> getFormatter();
+
 private:
   //日志名称
   std::string m_name;
   //日志级别
   LogLevel::Level m_level;
   //日志目标集合
-  std::list<LogAppender::ptr> m_appenders;
+  std::list<std::shared_ptr<LogAppender>> m_appenders;
+  //日志格式器
+  std::shared_ptr<LogFormat> m_formatter;
+};
+
+/**
+ * @brief 日志输出地
+ */
+class LogAppender{
+friend class Logger;
+public:
+  
+  typedef std::shared_ptr<LogAppender> ptr;
+  
+  /**
+   *@brief 析构函数
+   */
+  virtual ~LogAppender(){}
+  
+  /**
+   *@brief 写入日志
+   *@param[in] level 日志级别
+   *@param[in] ptr   日志事件
+   */
+  virtual void log(Logger::ptr log, LogLevel::Level, LogEvent::ptr) = 0;
+  
+  /**
+   *@brief 设置格式
+   *@param[in] val 日志格式
+   */
+  void setFormatter(std::shared_ptr<LogFormat> val){
+    m_formatter = val;
+  }
+
+  /**
+   *@brief 获取格式
+   */
+ std::shared_ptr<LogFormat> getFormatter() const{
+    return m_formatter;
+  }
+
+protected:
+  //日志等级
+  LogLevel::Level m_level;
+  //日志格式
+  std::shared_ptr<LogFormat> m_formatter;
 };
 
 /**
@@ -380,7 +355,7 @@ public:
    * param[in] level 日志等级
    * param[in] ptr 日志事件
    */ 
-  void log(LogLevel::Level level, LogEvent::ptr) override;
+  void log(Logger::ptr logger, LogLevel::Level level, LogEvent::ptr) override;
 };
 
 /**
@@ -401,7 +376,7 @@ public:
    * @param[in] level 日志等级
    * @param[in] ptr   日志事件
    */
-  void log(LogLevel::Level level, LogEvent::ptr) override;
+  void log(Logger::ptr logger, LogLevel::Level level, LogEvent::ptr) override;
 
   /**
    * @brief 重新打开文件
@@ -416,6 +391,75 @@ private:
   std::ofstream m_filestream;
   //上次打开时间
   uint64_t m_lastTime = 0;
+};
+
+
+/**
+ * @brief 日志格式器
+ */
+class LogFormat{
+public:
+  
+  typedef std::shared_ptr<LogFormat> ptr;
+  
+  /**
+   * @brief 构造函数
+   */ 
+  LogFormat(const std::string& pattern);
+
+  /**
+   * @brief 格式化
+   * @param[in]  logger  日志器
+   * @param[in]  level   日志等级 
+   * @param[in]  event   日志事件 
+   */ 
+  std::string format(Logger::ptr logger, LogLevel::Level level, LogEvent::ptr event);
+  std::ostream& format(std::ostream& ofs, Logger::ptr logger, LogLevel::Level level, LogEvent::ptr event);
+
+
+  /**
+   * @brief pattern的解析
+   */ 
+  void init();
+
+  /**
+   * @brief 返回是否有错误
+   */  
+  bool isErrror(){
+    return m_error;
+  }
+
+  /**
+   * @brief 返回日志模板
+   */ 
+  const std::string getPattern() const{
+    return m_pattern;
+  }
+
+public:
+  class FormatItem{
+  public:
+    
+    typedef std::shared_ptr<FormatItem> ptr;
+    
+    /**
+     * @brief 析构函数
+     */ 
+    virtual ~FormatItem() {}
+    
+    /**
+     * @brief 格式化 
+     */ 
+    virtual void format(std::ostream& os, Logger::ptr logger, LogLevel::Level level, LogEvent::ptr event) = 0;
+  };
+
+private:
+  //日志格式
+  std::string m_pattern;
+  //日志格式器列表
+  std::vector<FormatItem::ptr> m_items;
+  //是否有错误
+  bool m_error = false;
 };
 
 
